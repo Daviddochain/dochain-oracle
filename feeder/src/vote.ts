@@ -351,8 +351,8 @@ function getFeeDenom(args: VoteArgs): string {
 }
 
 function getGasPrice(): number {
-  const gasPrice = Number(process.env.ORACLE_FEEDER_GAS_PRICE || '0.0015')
-  return Number.isFinite(gasPrice) && gasPrice > 0 ? gasPrice : 0.0015
+  const gasPrice = Number(process.env.ORACLE_FEEDER_GAS_PRICE ?? '0')
+  return Number.isFinite(gasPrice) && gasPrice >= 0 ? gasPrice : 0
 }
 
 function normalizeValidatorAddresses(args: VoteArgs, rawKey: RawKey): string[] {
