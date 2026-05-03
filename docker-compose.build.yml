@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  oracle-price-server:
+    image: dochain/oracle-price-server
+    platform: linux/amd64
+    build:
+      context: price-server
+      dockerfile: Dockerfile
+      labels:
+        - "DoChain Oracle Price Server"
+
+  oracle-feeder:
+    image: dochain/oracle-feeder
+    platform: linux/amd64
+    build:
+      context: feeder
+      dockerfile: Dockerfile
+      labels:
+        - "DoChain Oracle Feeder (voter)"
+    environment:
+      - ORACLE_FEEDER_CHAIN_ID=dochain-1
+      - ORACLE_FEEDER_ADDR_PREFIX=do
+      - ORACLE_FEEDER_LCD_ADDRESS=http://host.docker.internal:1317
+      - ORACLE_FEEDER_VALIDATORS=dovaloper1...
+      - ORACLE_FEEDER_MNEMONIC=word1 word2 word3 ...

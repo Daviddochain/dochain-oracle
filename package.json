@@ -1,0 +1,52 @@
+{
+  "name": "dochain-oracle-feeder",
+  "author": "DoChain",
+  "license": "Apache-2.0",
+  "description": "DoChain Oracle Feeder",
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint '*/**/*.{js,ts,tsx}' --fix",
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "./src/**/*.{js,ts,tsx}": [
+      "prettier --write",
+      "eslint --fix",
+      "git add"
+    ],
+    "./src/**/*.{json,css}": [
+      "prettier --write",
+      "git add"
+    ]
+  },
+  "devDependencies": {
+    "@types/jest": "^29.2.3",
+    "@typescript-eslint/eslint-plugin": "^5.43.0",
+    "@typescript-eslint/parser": "^5.43.0",
+    "eslint": "^8.31.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-prettier": "^4.2.1",
+    "husky": "^8.0.2",
+    "jest": "^29.3.1",
+    "lint-staged": "^13.0.3",
+    "prettier": "^2.7.1",
+    "ts-jest": "^29.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Daviddochain/dochain-oracle.git"
+  },
+  "keywords": [
+    "oracle",
+    "blockchain",
+    "dochain",
+    "cosmos"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "bugs": {
+    "url": "https://github.com/Daviddochain/dochain-oracle/issues"
+  },
+  "homepage": "https://github.com/Daviddochain/dochain-oracle#readme"
+}
