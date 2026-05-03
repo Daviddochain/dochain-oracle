@@ -93,7 +93,14 @@ interface Price {
 
 async function getPrices(sources: string[]): Promise<Price[]> {
   try {
-    const response = await Promise.any(sources.map((s) => ax.get(s)))
+    const responses = await Promise.all(sources.map((s) => ax.get(s).catch(() => null)))
+    const response = responses.find((res) => res && res.data)
+
+    if (!response) {
+      logger.error('getPrices: all sources failed')
+      return []
+    }
+
     const { data } = response
 
     if (
