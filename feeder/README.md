@@ -73,7 +73,7 @@ You can start feeder with arguments or env.
 
 | Argument              | Env                              | Description                                               | Example                        |
 | --------------------- | -------------------------------- | --------------------------------------------------------- | ------------------------------ |
-| `password`            | `ORACLE_FEEDER_PASSWORD`         | Password for mnemonic (assigned in step #2)               | `12345678`                     |
+| `password`            | `ORACLE_FEEDER_PASSWORD`         | Strong password for the encrypted feeder key              | `<strong unique password>`     |
 | `data-source-url`     | `ORACLE_FEEDER_DATA_SOURCE_URL`  | Price server URL.                                         | http://localhost:8532/latest   |
 | `lcd-url`             | `ORACLE_FEEDER_LCD_ADDRESS`      | LCD server URL (can be multiple)                          | http://localhost:1317 |
 | `chain-id`            | `ORACLE_FEEDER_CHAIN_ID`         | Chain ID.                                                 | `dochain-1`                      |
@@ -82,4 +82,3 @@ You can start feeder with arguments or env.
 | `coin-type`           | `ORACLE_FEEDER_COIN_TYPE`        | coin type used to derive the public address (default 330) | `330`                          |
 | `key-path`            | `ORACLE_FEEDER_KEY_PATH`         | signing key store path (default voter.json)               | `voter.json`                   |
 | Unsupported           | `ORACLE_FEEDER_ADDR_PREFIX`      |                                                           | `do`                        |
-| Unsupported           | `ORACLE_FEEDER_IV_SALT`          | salt used in IV vector                                    | `myHashedIV`                   |

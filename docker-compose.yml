@@ -13,8 +13,8 @@ services:
     image: dochain/oracle-feeder
     environment:
       - ORACLE_FEEDER_DATA_SOURCE_URL=http://oracle-price-server:8532/latest
-      - ORACLE_FEEDER_PASSWORD=password
-      - ORACLE_FEEDER_MNEMONIC=word1 word2 word3 ...
+      - ORACLE_FEEDER_PASSWORD=${ORACLE_FEEDER_PASSWORD:?set a strong feeder keystore password}
+      - ORACLE_FEEDER_MNEMONIC=${ORACLE_FEEDER_MNEMONIC:?set the feeder mnemonic outside this file}
       - ORACLE_FEEDER_VALIDATORS=dovaloper1...
       - ORACLE_FEEDER_CHAIN_ID=dochain-1
       - ORACLE_FEEDER_ADDR_PREFIX=do

@@ -10,6 +10,17 @@ import { getBaseCurrency } from 'lib/currency'
 
 bluebird.config({ longStackTraces: true })
 
+function configuredFixedPrices(): Array<{ denom: string; price: string }> {
+  const fixedPrices = (config as any).fixedPrices || {}
+
+  return Object.keys(fixedPrices)
+    .map((denom) => ({
+      denom,
+      price: String(fixedPrices[denom]),
+    }))
+    .filter((price) => /^[A-Z0-9]+$/.test(price.denom) && /^\d+(\.\d+)?$/.test(price.price))
+}
+
 export async function createServer(): Promise<http.Server> {
   const app = polka({})
 
@@ -34,20 +45,14 @@ export async function createServer(): Promise<http.Server> {
       })),
     ]
 
- // 🔧 Inject DO price (from LUNC chain value)
-const fixedPrices = prices.filter(
-  (p) => p && p.denom !== 'undefined' && p.denom !== 'DO'
-)
+    const validPrices = prices.filter((p) => p && p.denom !== 'undefined')
+    const fixedPrices = configuredFixedPrices()
+    const fixedDenoms = new Set(fixedPrices.map((p) => p.denom))
 
-fixedPrices.push({
-  denom: 'DO',
-  price: '0.000000000164',
-})
-
-send(res, 200, {
-  created_at: new Date().toISOString(),
-  prices: fixedPrices,
-})
+    send(res, 200, {
+      created_at: new Date().toISOString(),
+      prices: [...validPrices.filter((p) => !fixedDenoms.has(p.denom)), ...fixedPrices],
+    })
   })
 
   const server = http.createServer(app.handler)

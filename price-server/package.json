@@ -4,7 +4,7 @@
   "main": "src/main.ts",
   "license": "Apache-2.0",
   "scripts": {
-    "start": "export NODE_OPTIONS=--openssl-legacy-provider && node --stack_size=4096 --max-old-space-size=4096 -r ts-node/register/transpile-only -r tsconfig-paths/register src/main.ts"
+    "start": "node --stack_size=4096 --max-old-space-size=4096 -r ts-node/register/transpile-only -r tsconfig-paths/register src/main.ts"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.0.2",
@@ -30,6 +30,7 @@
   },
   "devDependencies": {
     "@types/bluebird": "^3.5.37",
+    "@types/jest": "^30.0.0",
     "@types/lodash": "^4.14.189",
     "@types/node-fetch": "^2.5.8",
     "@types/ws": "^8.5.4"

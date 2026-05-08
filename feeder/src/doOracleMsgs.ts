@@ -1,185 +1,229 @@
-import { SHA256 } from 'jscrypto/SHA256'
-import { Any } from '@terra-money/terra.proto/google/protobuf/any'
-import {
-  MsgAggregateExchangeRatePrevote as ProtoPrevote,
-  MsgAggregateExchangeRateVote as ProtoVote,
-} from '@classic-terra/terra.proto/terra/oracle/v1beta1/tx'
+import * as crypto from 'crypto'
+import { BinaryReader, BinaryWriter } from 'cosmjs-types/binary'
+import { EncodeObject } from '@cosmjs/proto-signing'
 
-import { JSONSerializable } from '@terra-money/terra.js/dist/util/json'
-import { Coins } from '@terra-money/terra.js/dist/core/Coins'
+export const MsgAggregateDoRatePrevoteTypeUrl =
+  '/do.oracle.v1beta1.MsgAggregateDoRatePrevote'
+export const MsgAggregateDoRateVoteTypeUrl =
+  '/do.oracle.v1beta1.MsgAggregateDoRateVote'
+
+export interface MsgAggregateDoRatePrevoteProto {
+  hash: string
+  feeder: string
+  validator: string
+}
+
+export interface MsgAggregateDoRateVoteProto {
+  salt: string
+  exchangeRates: string
+  feeder: string
+  validator: string
+}
+
+function createBasePrevote(): MsgAggregateDoRatePrevoteProto {
+  return { hash: '', feeder: '', validator: '' }
+}
+
+function createBaseVote(): MsgAggregateDoRateVoteProto {
+  return { salt: '', exchangeRates: '', feeder: '', validator: '' }
+}
+
+export const MsgAggregateDoRatePrevoteProto = {
+  typeUrl: MsgAggregateDoRatePrevoteTypeUrl,
+
+  encode(
+    message: MsgAggregateDoRatePrevoteProto,
+    writer: BinaryWriter = BinaryWriter.create(),
+  ): BinaryWriter {
+    if (message.hash !== '') {
+      writer.uint32(10).string(message.hash)
+    }
+    if (message.feeder !== '') {
+      writer.uint32(18).string(message.feeder)
+    }
+    if (message.validator !== '') {
+      writer.uint32(26).string(message.validator)
+    }
+    return writer
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): MsgAggregateDoRatePrevoteProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input)
+    const end = length === undefined ? reader.len : reader.pos + length
+    const message = createBasePrevote()
+
+    while (reader.pos < end) {
+      const tag = reader.uint32()
+      switch (tag >>> 3) {
+        case 1:
+          message.hash = reader.string()
+          break
+        case 2:
+          message.feeder = reader.string()
+          break
+        case 3:
+          message.validator = reader.string()
+          break
+        default:
+          reader.skipType(tag & 7)
+          break
+      }
+    }
+
+    return message
+  },
+
+  fromPartial(object: Partial<MsgAggregateDoRatePrevoteProto>): MsgAggregateDoRatePrevoteProto {
+    const message = createBasePrevote()
+    message.hash = object.hash ?? ''
+    message.feeder = object.feeder ?? ''
+    message.validator = object.validator ?? ''
+    return message
+  },
+}
+
+export const MsgAggregateDoRateVoteProto = {
+  typeUrl: MsgAggregateDoRateVoteTypeUrl,
+
+  encode(
+    message: MsgAggregateDoRateVoteProto,
+    writer: BinaryWriter = BinaryWriter.create(),
+  ): BinaryWriter {
+    if (message.salt !== '') {
+      writer.uint32(10).string(message.salt)
+    }
+    if (message.exchangeRates !== '') {
+      writer.uint32(18).string(message.exchangeRates)
+    }
+    if (message.feeder !== '') {
+      writer.uint32(26).string(message.feeder)
+    }
+    if (message.validator !== '') {
+      writer.uint32(34).string(message.validator)
+    }
+    return writer
+  },
+
+  decode(input: BinaryReader | Uint8Array, length?: number): MsgAggregateDoRateVoteProto {
+    const reader = input instanceof BinaryReader ? input : new BinaryReader(input)
+    const end = length === undefined ? reader.len : reader.pos + length
+    const message = createBaseVote()
+
+    while (reader.pos < end) {
+      const tag = reader.uint32()
+      switch (tag >>> 3) {
+        case 1:
+          message.salt = reader.string()
+          break
+        case 2:
+          message.exchangeRates = reader.string()
+          break
+        case 3:
+          message.feeder = reader.string()
+          break
+        case 4:
+          message.validator = reader.string()
+          break
+        default:
+          reader.skipType(tag & 7)
+          break
+      }
+    }
+
+    return message
+  },
+
+  fromPartial(object: Partial<MsgAggregateDoRateVoteProto>): MsgAggregateDoRateVoteProto {
+    const message = createBaseVote()
+    message.salt = object.salt ?? ''
+    message.exchangeRates = object.exchangeRates ?? ''
+    message.feeder = object.feeder ?? ''
+    message.validator = object.validator ?? ''
+    return message
+  },
+}
 
 export function aggregateVoteHash(
-  exchangeRates: Coins,
+  exchangeRates: string,
   salt: string,
   validator: string,
 ): string {
-  const payload = `${salt}:${exchangeRates.toDecCoins().toString()}:${validator}`
-  return SHA256.hash(payload).toString().substring(0, 40)
+  const payload = `${salt}:${exchangeRates}:${validator}`
+  return crypto.createHash('sha256').update(payload).digest('hex').substring(0, 40)
 }
 
-export class MsgAggregateDoRatePrevote extends JSONSerializable<any, any, any> {
+export class MsgAggregateDoRatePrevote {
   public hash: string
   public feeder: string
   public validator: string
 
   constructor(hash: string, feeder: string, validator: string) {
-    super()
     this.hash = hash
     this.feeder = feeder
     this.validator = validator
   }
 
-  public static fromAmino(data: {
-    value: { hash: string; feeder: string; validator: string }
-  }): MsgAggregateDoRatePrevote {
-    const {
-      value: { hash, feeder, validator },
-    } = data
-
-    return new MsgAggregateDoRatePrevote(hash, feeder, validator)
-  }
-
-  public static fromData(data: {
-    '@type'?: string
-    hash: string
-    feeder: string
-    validator: string
-  }): MsgAggregateDoRatePrevote {
-    const { hash, feeder, validator } = data
-
-    return new MsgAggregateDoRatePrevote(hash, feeder, validator)
-  }
-
-  public static fromProto(proto: ProtoPrevote): MsgAggregateDoRatePrevote {
-    return new MsgAggregateDoRatePrevote(proto.hash, proto.feeder, proto.validator)
-  }
-
-  public toAmino() {
+  public toProto(): MsgAggregateDoRatePrevoteProto {
     return {
-      type: 'oracle/MsgAggregateDoRatePrevote',
-      value: {
-        hash: this.hash,
-        feeder: this.feeder,
-        validator: this.validator,
-      },
-    }
-  }
-
-  public toData() {
-    return {
-      '@type': '/do.oracle.v1beta1.MsgAggregateDoRatePrevote',
       hash: this.hash,
       feeder: this.feeder,
       validator: this.validator,
     }
   }
 
-  public toProto(): ProtoPrevote {
-    return ProtoPrevote.fromPartial({
+  public toEncodeObject(): EncodeObject {
+    return {
+      typeUrl: MsgAggregateDoRatePrevoteTypeUrl,
+      value: this.toProto(),
+    }
+  }
+
+  public toJSON(): Record<string, string> {
+    return {
+      typeUrl: MsgAggregateDoRatePrevoteTypeUrl,
       hash: this.hash,
       feeder: this.feeder,
       validator: this.validator,
-    })
-  }
-
-  public packAny(): Any {
-    return Any.fromPartial({
-      typeUrl: '/do.oracle.v1beta1.MsgAggregateDoRatePrevote',
-      value: ProtoPrevote.encode(this.toProto()).finish(),
-    })
+    }
   }
 }
 
-export class MsgAggregateDoRateVote extends JSONSerializable<any, any, any> {
+export class MsgAggregateDoRateVote {
   public salt: string
-  public exchange_rates: Coins
+  public exchangeRates: string
   public feeder: string
   public validator: string
 
-  constructor(
-    salt: string,
-    exchange_rates: Coins.Input,
-    feeder: string,
-    validator: string,
-  ) {
-    super()
+  constructor(salt: string, exchangeRates: string, feeder: string, validator: string) {
     this.salt = salt
-    this.exchange_rates = new Coins(exchange_rates)
+    this.exchangeRates = exchangeRates
     this.feeder = feeder
     this.validator = validator
   }
 
-  public static fromAmino(data: {
-    value: {
-      salt: string
-      exchange_rates: string
-      feeder: string
-      validator: string
-    }
-  }): MsgAggregateDoRateVote {
-    const {
-      value: { salt, exchange_rates, feeder, validator },
-    } = data
-
-    return new MsgAggregateDoRateVote(salt, exchange_rates, feeder, validator)
-  }
-
-  public static fromData(data: {
-    '@type'?: string
-    salt: string
-    exchange_rates: string
-    feeder: string
-    validator: string
-  }): MsgAggregateDoRateVote {
-    const { salt, exchange_rates, feeder, validator } = data
-
-    return new MsgAggregateDoRateVote(salt, exchange_rates, feeder, validator)
-  }
-
-  public static fromProto(proto: ProtoVote): MsgAggregateDoRateVote {
-    return new MsgAggregateDoRateVote(
-      proto.salt,
-      proto.exchangeRates,
-      proto.feeder,
-      proto.validator,
-    )
-  }
-
-  public toAmino() {
+  public toProto(): MsgAggregateDoRateVoteProto {
     return {
-      type: 'oracle/MsgAggregateDoRateVote',
-      value: {
-        salt: this.salt,
-        exchange_rates: this.exchange_rates.toDecCoins().toString(),
-        feeder: this.feeder,
-        validator: this.validator,
-      },
-    }
-  }
-
-  public toData() {
-    return {
-      '@type': '/do.oracle.v1beta1.MsgAggregateDoRateVote',
       salt: this.salt,
-      exchange_rates: this.exchange_rates.toDecCoins().toString(),
+      exchangeRates: this.exchangeRates,
       feeder: this.feeder,
       validator: this.validator,
     }
   }
 
-  public toProto(): ProtoVote {
-    return ProtoVote.fromPartial({
-      salt: this.salt,
-      exchangeRates: this.exchange_rates.toDecCoins().toString(),
-      feeder: this.feeder,
-      validator: this.validator,
-    })
+  public toEncodeObject(): EncodeObject {
+    return {
+      typeUrl: MsgAggregateDoRateVoteTypeUrl,
+      value: this.toProto(),
+    }
   }
 
-  public packAny(): Any {
-    return Any.fromPartial({
-      typeUrl: '/do.oracle.v1beta1.MsgAggregateDoRateVote',
-      value: ProtoVote.encode(this.toProto()).finish(),
-    })
+  public toJSON(): Record<string, string> {
+    return {
+      typeUrl: MsgAggregateDoRateVoteTypeUrl,
+      salt: this.salt,
+      exchange_rates: this.exchangeRates,
+      feeder: this.feeder,
+      validator: this.validator,
+    }
   }
 }

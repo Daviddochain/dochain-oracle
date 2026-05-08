@@ -27,6 +27,7 @@ const fiatSymbols = [
 module.exports = {
   port: 8532,
   metricsPort: 8533,
+  fixedPrices: {},
   sentry: '', // sentry dsn (https://sentry.io/ - error reporting service)
   reporter: true,
   slack: {

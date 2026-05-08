@@ -39,6 +39,6 @@ This solution has 2 components:
 Required variables:
 
 ```txt
-ORACLE_FEEDER_PASSWORD=password
-ORACLE_FEEDER_MNEMONIC=word1 word2 word3 ...
+ORACLE_FEEDER_PASSWORD=<strong unique password>
+ORACLE_FEEDER_MNEMONIC=<24 word feeder mnemonic>
 ORACLE_FEEDER_VALIDATORS=dovaloper1...

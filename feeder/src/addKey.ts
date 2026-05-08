@@ -3,7 +3,7 @@ import * as promptly from 'promptly'
 
 export async function addKey(filePath: string, coinType: string, keyName: string): Promise<void> {
   let password = process.env.ORACLE_FEEDER_PASSWORD || ''
-  let mnemonic = process.env.ORACLE_FEEDER_MNENOMIC || ''
+  let mnemonic = process.env.ORACLE_FEEDER_MNEMONIC || process.env.ORACLE_FEEDER_MNENOMIC || ''
 
   coinType = process.env.ORACLE_FEEDER_COIN_TYPE ? process.env.ORACLE_FEEDER_COIN_TYPE : coinType
   keyName = process.env.ORACLE_FEEDER_KEY_NAME ? process.env.ORACLE_FEEDER_KEY_NAME : keyName

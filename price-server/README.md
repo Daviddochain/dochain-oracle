@@ -35,6 +35,7 @@ You can find the sample configuration at: `config/default-sample.js`. Oracle Pri
 module.exports = {
   port: 8532,
   metricsPort: 8533,
+  fixedPrices: {},
   sentry: '', // sentry dsn (https://sentry.io/ - error reporting service)
   slack: {
     // for incident alarm (e.g. exchange shutdown)
@@ -100,6 +101,7 @@ module.exports = {
 | Key              | Type   | Description                                                                                                                                       |
 | ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `port`           | number | Port number to expose the price server.                                                                                                           |
+| `fixedPrices`    | object | Optional explicit price overrides, for emergency/manual operation only.                                                                           |
 | `sentry`         | string | URL for [sentry.io](https://sentry.io) error reporting                                                                                            |
 | `slack`          | object | Slack webhook notification configuration                                                                                                          |
 | `cryptoProvider` | object | Configuration for cryptocurrency data provider. Current supported providers are `upbit`, `bithumb`, `binance`, `huobi`, `bitfinex`, and `kraken`. |

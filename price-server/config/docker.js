@@ -1,7 +1,9 @@
-const FIAT_SYMBOLS = process.env.FIAT_SYMBOLS.split(',') || []
+const splitEnv = (name) => (process.env[name] ? process.env[name].split(',').filter(Boolean) : [])
+const FIAT_SYMBOLS = splitEnv('FIAT_SYMBOLS')
 
 module.exports = {
   port: parseInt(process.env.PORT) || 8532,
+  fixedPrices: process.env.DO_PRICE ? { DO: process.env.DO_PRICE } : {},
   sentry: process.env.SENTRY || '', // sentry dsn (https://sentry.io/ - error reporting service)
   slack: {
     // for incident alarm (e.g. exchange shutdown)
@@ -10,7 +12,7 @@ module.exports = {
   },
   cryptoProvider: {
     adjustTvwap: {
-      symbols: process.env.CRYPTO_PROVIDER_ADJUST_TVWAP_SYMBOLS.split(',') || [],
+      symbols: splitEnv('CRYPTO_PROVIDER_ADJUST_TVWAP_SYMBOLS'),
     },
     upbit: process.env.CRYPTO_PROVIDER_UPBIT_SYMBOLS && {
       symbols: process.env.CRYPTO_PROVIDER_UPBIT_SYMBOLS.split(',') || [],

@@ -3,22 +3,30 @@ import * as promptly from 'promptly'
 import * as http from 'http'
 import * as https from 'https'
 import axios from 'axios'
-import { bech32 } from 'bech32'
-import * as ks from './keystore'
+import * as bech32 from 'bech32'
+import { encodeSecp256k1Pubkey } from '@cosmjs/amino'
+import { fromBase64, toBase64 } from '@cosmjs/encoding'
 import {
-  LCDClient,
-  RawKey,
-  Wallet,
-  isTxError,
-  LCDClientConfig,
-  Fee,
-  Coins,
-} from '@terra-money/terra.js'
+  DirectSecp256k1Wallet,
+  EncodeObject,
+  GeneratedType,
+  Registry,
+  encodePubkey,
+  makeAuthInfoBytes,
+  makeSignDoc,
+} from '@cosmjs/proto-signing'
+import { defaultRegistryTypes } from '@cosmjs/stargate'
+import { TxRaw } from 'cosmjs-types/cosmos/tx/v1beta1/tx'
+import * as ks from './keystore'
 import * as packageInfo from '../package.json'
 import * as logger from './logger'
 import {
   MsgAggregateDoRatePrevote,
+  MsgAggregateDoRatePrevoteProto,
+  MsgAggregateDoRatePrevoteTypeUrl,
   MsgAggregateDoRateVote,
+  MsgAggregateDoRateVoteProto,
+  MsgAggregateDoRateVoteTypeUrl,
   aggregateVoteHash,
 } from './doOracleMsgs'
 
@@ -29,14 +37,32 @@ const ax = axios.create({
   headers: { post: { 'Content-Type': 'application/json' } },
 })
 
-async function initKey(keyPath: string, name: string, password?: string): Promise<RawKey> {
-  const plainEntity = ks.load(
+const registry = new Registry([
+  ...defaultRegistryTypes,
+  [MsgAggregateDoRatePrevoteTypeUrl, MsgAggregateDoRatePrevoteProto as GeneratedType],
+  [MsgAggregateDoRateVoteTypeUrl, MsgAggregateDoRateVoteProto as GeneratedType],
+])
+
+interface LCDClient {
+  lcdUrl: string
+  chainID: string
+}
+
+interface AccountState {
+  accountNumber: number
+  sequence: number
+}
+
+async function initKey(
+  keyPath: string,
+  name: string,
+  password?: string,
+): Promise<ks.PlainEntity> {
+  return ks.load(
     keyPath,
     name,
     password || (await promptly.password('Enter a passphrase:', { replace: '*' })),
   )
-
-  return new RawKey(Buffer.from(plainEntity.privateKey, 'hex'))
 }
 
 function convertBech32Prefix(addr: string, prefix: string): string {
@@ -53,12 +79,13 @@ interface OracleParameters {
 }
 
 function getLCDBase(client: LCDClient): string {
-  return (
-    (client as any).config?.URL ||
-    (client as any).config?.lcd ||
-    process.env.ORACLE_FEEDER_LCD_ADDRESS?.split(',')[0] ||
-    'http://127.0.0.1:1317'
-  )
+  return client.lcdUrl.replace(/\/+$/, '')
+}
+
+async function getLatestBlockHeight(client: LCDClient): Promise<number> {
+  const lcdBase = getLCDBase(client)
+  const latestBlockRes = await ax.get(`${lcdBase}/cosmos/base/tendermint/v1beta1/blocks/latest`)
+  return parseInt(latestBlockRes.data.block.header.height, 10)
 }
 
 async function loadOracleParams(client: LCDClient): Promise<OracleParameters> {
@@ -69,9 +96,7 @@ async function loadOracleParams(client: LCDClient): Promise<OracleParameters> {
 
   const oracleVotePeriod = parseInt(oracleParams.vote_period, 10)
   const oracleWhitelist: string[] = oracleParams.whitelist.map((e: any) => e.name)
-
-  const latestBlockRes = await ax.get(`${lcdBase}/cosmos/base/tendermint/v1beta1/blocks/latest`)
-  const blockHeight = parseInt(latestBlockRes.data.block.header.height, 10)
+  const blockHeight = await getLatestBlockHeight(client)
 
   const nextBlockHeight = blockHeight + 1
   const currentVotePeriod = Math.floor(blockHeight / oracleVotePeriod)
@@ -157,7 +182,7 @@ function preparePrices(prices: Price[], oracleWhitelist: string[]): Price[] {
     }
   })
 
-  return newPrices
+  return newPrices.sort((a, b) => a.denom.localeCompare(b.denom))
 }
 
 function buildVoteMsgs(
@@ -165,11 +190,13 @@ function buildVoteMsgs(
   valAddrs: string[],
   voterAddr: string,
 ): MsgAggregateDoRateVote[] {
-  const coins = prices.map(({ denom, price }) => `${price}u${denom.toLowerCase()}`).join(',')
+  const exchangeRates = prices
+    .map(({ denom, price }) => `${price}u${denom.toLowerCase()}`)
+    .join(',')
 
   return valAddrs.map((valAddr) => {
-    const salt = crypto.randomBytes(2).toString('hex')
-    return new MsgAggregateDoRateVote(salt, coins, voterAddr, valAddr)
+    const salt = crypto.randomBytes(16).toString('hex')
+    return new MsgAggregateDoRateVote(salt, exchangeRates, voterAddr, valAddr)
   })
 }
 
@@ -189,7 +216,7 @@ interface VoteArgs {
 
 export async function processVote(
   client: LCDClient,
-  wallet: Wallet,
+  wallet: DirectSecp256k1Wallet,
   args: VoteArgs,
   valAddrs: string[],
   voterAddr: string,
@@ -219,47 +246,48 @@ export async function processVote(
 
   const _prices = await getPrices(args.dataSourceUrl)
   const prices = preparePrices(_prices, oracleWhitelist)
-  const voteMsgs: MsgAggregateDoRateVote[] = buildVoteMsgs(prices, valAddrs, voterAddr)
+  const voteMsgs = buildVoteMsgs(prices, valAddrs, voterAddr)
 
   const isPrevoteOnlyTx = previousVoteMsgs.length === 0
 
   const prevoteMsgs: MsgAggregateDoRatePrevote[] = voteMsgs.map((vm) => {
-    const hash = aggregateVoteHash(vm.exchange_rates, vm.salt, vm.validator)
+    const hash = aggregateVoteHash(vm.exchangeRates, vm.salt, vm.validator)
     return new MsgAggregateDoRatePrevote(hash, vm.feeder, vm.validator)
   })
 
-  const msgs: any[] = [...previousVoteMsgs, ...prevoteMsgs]
-  logger.info(`[${isPrevoteOnlyTx ? 'PREVOTE' : 'VOTE'}] msg: ${JSON.stringify(msgs)}\n`)
+  const msgs: EncodeObject[] = [
+    ...previousVoteMsgs.map((msg) => msg.toEncodeObject()),
+    ...prevoteMsgs.map((msg) => msg.toEncodeObject()),
+  ]
+  logger.info(
+    `[${isPrevoteOnlyTx ? 'PREVOTE' : 'VOTE'}] msg: ${JSON.stringify([
+      ...previousVoteMsgs,
+      ...prevoteMsgs,
+    ])}\n`,
+  )
 
   const gasDenom = getFeeDenom(args)
   const gasPrice = getGasPrice()
   const gasLimit = (1 + msgs.length) * 100_000
   const feeAmount = Math.ceil(gasLimit * gasPrice)
 
-  const tx = await wallet.createAndSignTx({
-    msgs: msgs as any,
-    fee: new Fee(gasLimit, new Coins({ [gasDenom]: feeAmount })),
-    memo: `${packageInfo.name}@${packageInfo.version}`,
-  } as any)
+  const txhash = await signAndBroadcast(
+    client,
+    wallet,
+    voterAddr,
+    msgs,
+    feeAmount,
+    gasDenom,
+    gasLimit,
+    `${packageInfo.name}@${packageInfo.version}`,
+  )
 
-  const res = await client.tx.broadcastSync(tx).catch((err: any) => {
-    logger.error(`broadcast error: ${err.message} ${tx.toData((client as any).config?.isClassic)}`)
-    throw err
-  })
-
-  if (isTxError(res)) {
-    logger.error(`broadcast error: code: ${res.code}, raw_log: ${res.raw_log}`)
-    return
-  }
-
-  const txhash = res.txhash
   logger.info(`[VOTE] Broadcast success ${txhash}`)
 
   const height = await validateTx(
     client,
     nextBlockHeight,
     txhash,
-    args,
     isPrevoteOnlyTx ? oracleVotePeriod * 2 : oracleVotePeriod - indexInVotePeriod,
   )
 
@@ -267,11 +295,111 @@ export async function processVote(
   previousVoteMsgs = voteMsgs
 }
 
+async function signAndBroadcast(
+  client: LCDClient,
+  wallet: DirectSecp256k1Wallet,
+  voterAddr: string,
+  msgs: EncodeObject[],
+  feeAmount: number,
+  gasDenom: string,
+  gasLimit: number,
+  memo: string,
+): Promise<string> {
+  const lcdBase = getLCDBase(client)
+  const accountState = await loadAccountState(lcdBase, voterAddr)
+  const [account] = await wallet.getAccounts()
+  const txBodyBytes = registry.encodeTxBody({ messages: msgs, memo })
+  const authInfoBytes = makeAuthInfoBytes(
+    [
+      {
+        pubkey: encodePubkey(encodeSecp256k1Pubkey(account.pubkey)),
+        sequence: accountState.sequence,
+      },
+    ],
+    [{ denom: gasDenom, amount: String(feeAmount) }],
+    gasLimit,
+    undefined,
+    undefined,
+  )
+  const signDoc = makeSignDoc(
+    txBodyBytes,
+    authInfoBytes,
+    client.chainID,
+    accountState.accountNumber,
+  )
+  const { signed, signature } = await wallet.signDirect(voterAddr, signDoc)
+  const txRaw = TxRaw.fromPartial({
+    bodyBytes: signed.bodyBytes,
+    authInfoBytes: signed.authInfoBytes,
+    signatures: [fromBase64(signature.signature)],
+  })
+  const txBytes = TxRaw.encode(txRaw).finish()
+  const broadcastRes = await ax.post(`${lcdBase}/cosmos/tx/v1beta1/txs`, {
+    tx_bytes: toBase64(txBytes),
+    mode: 'BROADCAST_MODE_SYNC',
+  })
+  const txResponse = broadcastRes.data?.tx_response
+
+  if (!txResponse) {
+    throw new Error('[VOTE] broadcast response did not include tx_response')
+  }
+
+  const code = Number(txResponse.code || 0)
+  if (code !== 0) {
+    throw new Error(
+      `[VOTE] broadcast rejected: code: ${code}, raw_log: ${txResponse.raw_log || ''}`,
+    )
+  }
+
+  if (!txResponse.txhash) {
+    throw new Error('[VOTE] broadcast response did not include txhash')
+  }
+
+  return txResponse.txhash
+}
+
+async function loadAccountState(lcdBase: string, address: string): Promise<AccountState> {
+  const res = await ax.get(`${lcdBase}/cosmos/auth/v1beta1/accounts/${address}`)
+  const account = res.data?.account
+  const accountNumber = findStringNumber(account, 'account_number')
+  const sequence = findStringNumber(account, 'sequence')
+
+  if (accountNumber === undefined || sequence === undefined) {
+    throw new Error(`Unable to load account number/sequence for ${address}`)
+  }
+
+  return {
+    accountNumber,
+    sequence,
+  }
+}
+
+function findStringNumber(value: any, key: string): number | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+
+  if (value[key] !== undefined) {
+    const parsed = Number(value[key])
+    if (Number.isSafeInteger(parsed) && parsed >= 0) {
+      return parsed
+    }
+  }
+
+  for (const child of Object.values(value)) {
+    const found = findStringNumber(child, key)
+    if (found !== undefined) {
+      return found
+    }
+  }
+
+  return undefined
+}
+
 async function validateTx(
   client: LCDClient,
   nextBlockHeight: number,
   txhash: string,
-  _args: VoteArgs,
   timeoutHeight: number,
 ): Promise<number> {
   let inclusionHeight = 0
@@ -283,8 +411,7 @@ async function validateTx(
   while (!inclusionHeight && lastCheckHeight < maxBlockHeight) {
     await new Promise((resolve) => setTimeout(resolve, 1500))
 
-    const lastBlock = await client.tendermint.blockInfo()
-    const latestBlockHeight = parseInt(lastBlock.block.header.height, 10)
+    const latestBlockHeight = await getLatestBlockHeight(client)
 
     if (latestBlockHeight <= lastCheckHeight) {
       continue
@@ -355,40 +482,34 @@ function getGasPrice(): number {
   return Number.isFinite(gasPrice) && gasPrice >= 0 ? gasPrice : 0
 }
 
-function normalizeValidatorAddresses(args: VoteArgs, rawKey: RawKey): string[] {
+function normalizeValidatorAddresses(args: VoteArgs, voterAddr: string): string[] {
   const valoperPrefix = getValoperPrefix(args)
-
   const configuredValidators =
-    args.validators && args.validators.length ? args.validators : [((rawKey as any).valAddress || '')]
+    args.validators && args.validators.length ? args.validators : [voterAddr]
 
   return configuredValidators.map((addr) => convertBech32Prefix(addr, valoperPrefix))
 }
 
-function buildLCDClientConfig(args: VoteArgs, lcdIndex: number): Record<string, LCDClientConfig> {
+function buildLCDClient(args: VoteArgs, lcdIndex: number): LCDClient {
   return {
-    [args.chainID]: {
-      URL: args.lcdUrl[lcdIndex],
-      chainID: args.chainID,
-      gasAdjustment: '1.5',
-      gasPrices: { [getFeeDenom(args)]: getGasPrice() },
-      isClassic: true,
-    },
+    lcdUrl: args.lcdUrl[lcdIndex],
+    chainID: args.chainID,
   }
 }
 
 export async function vote(args: VoteArgs): Promise<void> {
-  const rawKey: RawKey = await initKey(args.keyPath, args.keyName, args.password)
+  const plainEntity = await initKey(args.keyPath, args.keyName, args.password)
   const accPrefix = getAccPrefix(args)
-  const valAddrs: string[] = normalizeValidatorAddresses(args, rawKey)
-
-  Object.defineProperty(rawKey, 'accAddress', {
-    value: convertBech32Prefix((rawKey as any).accAddress, accPrefix),
-  })
-
-  const voterAddr = (rawKey as any).accAddress
+  const wallet = await DirectSecp256k1Wallet.fromKey(
+    Buffer.from(plainEntity.privateKey, 'hex'),
+    accPrefix,
+  )
+  const [account] = await wallet.getAccounts()
+  const voterAddr = account.address
+  const valAddrs = normalizeValidatorAddresses(args, voterAddr)
 
   const lcdRotate = {
-    client: new LCDClient(buildLCDClientConfig(args, 0)[args.chainID]),
+    client: buildLCDClient(args, 0),
     current: 0,
     max: args.lcdUrl.length - 1,
   }
@@ -396,13 +517,7 @@ export async function vote(args: VoteArgs): Promise<void> {
   while (true) {
     const startTime = Date.now()
 
-    await processVote(
-      lcdRotate.client,
-      lcdRotate.client.wallet(rawKey),
-      args,
-      valAddrs,
-      voterAddr,
-    ).catch((err: any) => {
+    await processVote(lcdRotate.client, wallet, args, valAddrs, voterAddr).catch((err: any) => {
       if (err.isAxiosError && err.response) {
         logger.error(err.message, err.response.data)
       } else {
@@ -423,15 +538,12 @@ export async function vote(args: VoteArgs): Promise<void> {
   }
 }
 
-function rotateLCD(
-  args: VoteArgs,
-  lcdRotate: { client: LCDClient; current: number; max: number },
-) {
+function rotateLCD(args: VoteArgs, lcdRotate: { client: LCDClient; current: number; max: number }) {
   if (++lcdRotate.current > lcdRotate.max) {
     lcdRotate.current = 0
   }
 
-  lcdRotate.client = new LCDClient(buildLCDClientConfig(args, lcdRotate.current)[args.chainID])
+  lcdRotate.client = buildLCDClient(args, lcdRotate.current)
 
   logger.info(`Switched to LCD address ${lcdRotate.current}(${args.lcdUrl[lcdRotate.current]})`)
 }
